@@ -1,0 +1,31 @@
+{
+  "pipeline_name": "ProcessingPipeline",
+  "trial": "test-blog-post",
+  "pipeline_role": "arn:aws:iam::404506831684:role/sagemaker-execution-role-blogpost",
+  "infra_bucket": "example-infra-bucket-pyspark-blogpost",
+  "data_bucket": "example-data-bucket-pyspark-blogpost",
+  "processing_key": "src/processing",
+  "helper_key": "src/helper",
+  "data_utils_code": "data_utils.py",
+  "network_subnet_ids": [
+    "subnet1-id",
+    "subnet2-id"
+  ],
+  "network_security_group_ids": [
+    "sg1-id",
+    "sg2-id"
+  ],
+  "spark_key": "src/spark_configuration",
+  "spark_config": "configuration.json",
+  "pyspark_process_code": "process_pyspark.py",
+  "pyspark_framework_version": "2.4",
+  "pyspark_process_name": "pyspark-processing",
+  "pyspark_process_data_input": "s3a://{}/data_input/abalone_data.csv",
+  "pyspark_process_data_output": "s3a://{}/pyspark/data_output",
+  "pyspark_process_instance_type": "ml.m5.4xlarge",
+  "pyspark_process_instance_count": 6,
+  "tags": {
+    "Project": "tag-for-project",
+    "Owner": "tag-for-owner"
+  }
+}
