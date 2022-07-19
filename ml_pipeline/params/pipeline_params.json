@@ -15,6 +15,8 @@
     "sg1-id",
     "sg2-id"
   ],
+  "pyspark_process_volume_kms": "arn_kms_for_volume_encryption",
+  "pyspark_process_output_kms": "arn_kms_for_output_encryption",
   "spark_key": "src/spark_configuration",
   "spark_config": "configuration.json",
   "pyspark_process_code": "process_pyspark.py",

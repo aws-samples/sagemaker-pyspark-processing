@@ -61,7 +61,7 @@ def create_pipeline(pipeline_params, logger):
     pipeline_config = get_pipeline_config(pipeline_params)
 
     # setting processing cache obj
-    logger.info("Setting " + pipeline_params["pyspark_process_name"]  + " cache configuration 3to 30 days")
+    logger.info("Setting " + pipeline_params["pyspark_process_name"] + " cache configuration 3to 30 days")
     cache_config = CacheConfig(enable_caching=True, expire_after="p30d")
 
     # processing input arguments. To add new arguments to this list you need to provide two entrances:
