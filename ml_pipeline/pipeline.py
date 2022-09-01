@@ -10,11 +10,6 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 
-Author:  Maira Ladeira Tanke (mttanke@amazon.com)
-Author:  Maren Suilmann (suilm@amazon.com)
-Author:  Donald Fossouo (fossod@amazon.com)
-Author:  Pauline Ting (tingpaul@amazon.com)
-
 Description: SagaMaker Pipeline with PySpark Processor
 """
 
@@ -68,38 +63,10 @@ def create_pipeline(pipeline_params, logger):
     # 1st is the argument name preceded by "--" and the 2nd is the argument value
     # setting up processing arguments
     process_args = [
-        "--input_table", pipeline_params["pyspark_process_data_input"].format(pipeline_params["data_bucket"]),
-        "--output_table", pipeline_params["pyspark_process_data_output"].format(pipeline_params["data_bucket"])
+        "--input_table", pipeline_params["pyspark_process_data_input"],
+        "--output_table", pipeline_params["pyspark_process_data_output"]
     ]
-
-    # setting process code
-    process_code = "s3://{}/{}/{}".format(
-        pipeline_params["infra_bucket"],
-        pipeline_params["processing_key"],
-        pipeline_params["pyspark_process_code"]
-    )
-
-    # setting process support python files
-    process_helpers = [
-        "s3://{}/{}/{}".format(
-            pipeline_params["infra_bucket"],
-            pipeline_params["helper_key"],
-            pipeline_params["data_utils_code"]
-        )
-    ]
-
-    # setting pre-process spark configuration files
-    process_spark_config_loc = "s3://{}/{}/{}".format(
-        pipeline_params["infra_bucket"],
-        pipeline_params["spark_key"],
-        pipeline_params["spark_config"]
-    )
-
-    # setting pre-process spark ui log s3 output location
-    process_spark_ui_log_output = "s3://{}/spark_ui_logs/{}".format(
-        pipeline_params["data_bucket"],
-        pipeline_params["trial"]
-    )
+    
 
     # Create PySpark Processing Step
     logger.info("Creating " + pipeline_params["pyspark_process_name"] + " processor")
@@ -107,8 +74,8 @@ def create_pipeline(pipeline_params, logger):
     processing_pyspark_processor, processing_run_dependencies = create_pyspark_processor(
         base_job_name=pipeline_params["pyspark_process_name"],
         framework_version=pipeline_params["pyspark_framework_version"],
-        job_code_uri=process_code,
-        job_helpers_uris=process_helpers,
+        job_code_uri=pipeline_params["pyspark_process_code"],
+        job_helpers_uris=[pipeline_params["pyspark_helper_code"]],
         job_args=process_args,
         sagemaker_session=sagemaker_session,
         network_config_input=network_config,
@@ -116,13 +83,13 @@ def create_pipeline(pipeline_params, logger):
         processing_instance_type=pipeline_params["pyspark_process_instance_type"],
         processing_instance_count=pipeline_params["pyspark_process_instance_count"],
         role=pipeline_params["pipeline_role"],
-        spark_event_logs_s3_uri=process_spark_ui_log_output,
+        spark_event_logs_s3_uri=pipeline_params["process_spark_ui_log_output"].format(pipeline_params["trial"]),
         volume_kms_key=pipeline_params["pyspark_process_volume_kms"],
         output_kms_key=pipeline_params["pyspark_process_output_kms"]
     )
     inputs = [
         ProcessingInput(
-            source=process_spark_config_loc,
+            source=pipeline_params["spark_config_file"],
             destination="/opt/ml/processing/input/conf",
             s3_data_type="S3Prefix",
             s3_input_mode="File",

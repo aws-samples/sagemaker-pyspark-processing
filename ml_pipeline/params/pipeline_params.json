@@ -1,29 +1,24 @@
 {
   "pipeline_name": "ProcessingPipeline",
   "trial": "test-blog-post",
-  "pipeline_role": "arn:aws:iam::404506831684:role/sagemaker-execution-role-blogpost",
-  "infra_bucket": "example-infra-bucket-pyspark-blogpost",
-  "data_bucket": "example-data-bucket-pyspark-blogpost",
-  "processing_key": "src/processing",
-  "helper_key": "src/helper",
-  "data_utils_code": "data_utils.py",
+  "pipeline_role": "arn:aws:iam::<ACCOUNT_NUMBER>:role/<PIPELINE_EXECUTION_ROLE_NAME>",
   "network_subnet_ids": [
-    "subnet1-id",
-    "subnet2-id"
+      "subnet-<SUBNET_ID>",
+      "subnet-<SUBNET_ID>"
   ],
   "network_security_group_ids": [
-    "sg1-id",
-    "sg2-id"
+      "sg-<SG_ID>"
   ],
-  "pyspark_process_volume_kms": "arn_kms_for_volume_encryption",
-  "pyspark_process_output_kms": "arn_kms_for_output_encryption",
-  "spark_key": "src/spark_configuration",
-  "spark_config": "configuration.json",
-  "pyspark_process_code": "process_pyspark.py",
+  "pyspark_process_volume_kms": "arn:aws:kms:<REGION_NAME>:<ACCOUNT_NUMBER>:key/<KMS_KEY_ID>",
+  "pyspark_process_output_kms": "arn:aws:kms:<REGION_NAME>:<ACCOUNT_NUMBER>:key/<KMS_KEY_ID>",
+  "pyspark_helper_code": "s3://<INFRA_S3_BUCKET>/src/helper/data_utils.py",
+  "spark_config_file": "s3://<INFRA_S3_BUCKET>/src/spark_configuration/configuration.json",
+  "pyspark_process_code": "s3://<INFRA_S3_BUCKET>/src/processing/process_pyspark.py",
+  "process_spark_ui_log_output": "s3://<DATA_S3_BUCKET>/spark_ui_logs/{}",
   "pyspark_framework_version": "2.4",
   "pyspark_process_name": "pyspark-processing",
-  "pyspark_process_data_input": "s3a://{}/data_input/abalone_data.csv",
-  "pyspark_process_data_output": "s3a://{}/pyspark/data_output",
+  "pyspark_process_data_input": "s3a://<DATA_S3_BUCKET>/data_input/abalone_data.csv",
+  "pyspark_process_data_output": "s3a://<DATA_S3_BUCKET>/pyspark/data_output",
   "pyspark_process_instance_type": "ml.m5.4xlarge",
   "pyspark_process_instance_count": 6,
   "tags": {

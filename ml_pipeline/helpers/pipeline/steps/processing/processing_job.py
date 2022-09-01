@@ -9,11 +9,6 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 
-Author:  Maira Ladeira Tanke (mttanke@amazon.com)
-Author:  Maren Suilmann (suilm@amazon.com)
-Author:  Donald Fossouo (fossod@amazon.com)
-Author:  Pauline Ting (tingpaul@amazon.com)
-
 Description: Helper functions to handle SageMaker Processing Jobs
 """
 
@@ -66,6 +61,10 @@ def create_pyspark_processor(base_job_name, framework_version, job_code_uri, rol
         sagemaker_session=sagemaker_session
     )
     # setting up dependencies
+    print("job_code_uri:", job_code_uri)
+    print("job_helpers_uris:", job_helpers_uris)
+    print("job_args:", job_args)
+    print("spark_event_logs_s3_uri:", spark_event_logs_s3_uri)
     run_ags_dependencies = spark_processor.get_run_args(
         submit_app=job_code_uri,
         submit_py_files=job_helpers_uris,

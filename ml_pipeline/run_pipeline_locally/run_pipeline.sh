@@ -18,9 +18,9 @@ cd $SCRIPTDIR
 cd ../../
 # sync src folder 
 # saving src versioned for auditability
-aws s3 sync src s3://<INFRA_BUCKET_NAME>/src --region eu-west-1
+aws s3 sync src s3://<INFRA_S3_BUCKET>/src --region eu-west-1
 # sync ml_pipeline folder
-aws s3 sync ml_pipeline s3://<INFRA_BUCKET_NAME>/ml_pipeline --region eu-west-1
+aws s3 sync ml_pipeline s3://<INFRA_S3_BUCKET>/ml_pipeline --region eu-west-1
 
 # run 
 python ml_pipeline/pipeline.py
