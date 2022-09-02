@@ -485,7 +485,7 @@ Resources:
   VPCIdSSM:
     Type: 'AWS::SSM::Parameter'
     Properties:
-      Name: !Sub "pyspark-vpc-id"
+      Name: "/pyspark/vpc-id"
       Type: String
       Value: !Ref 'VPC'
       Description: !Sub "Pyspark VPC ID"
@@ -493,7 +493,7 @@ Resources:
   PrivateSubnet1AIdSSM:
     Type: 'AWS::SSM::Parameter'
     Properties:
-      Name: !Sub "pyspark-private-sn-1a-id"
+      Name: "/pyspark/private-sn-1a-id"
       Type: String
       Value: !Ref PrivateSubnet1A
       Description: Private Subnet 1A ID
@@ -501,7 +501,7 @@ Resources:
   PrivateSubnet2AIdSSM:
     Type: 'AWS::SSM::Parameter'
     Properties:
-      Name: !Sub "pyspark-private-sn-2a-id"
+      Name: "/pyspark/private-sn-2a-id"
       Type: String
       Value: !Ref PrivateSubnet2A
       Description: Private Subnet 2A ID
@@ -509,7 +509,7 @@ Resources:
   SageMakerSecurityGroupIdsSSM:
     Type: 'AWS::SSM::Parameter'
     Properties:
-      Name: !Sub "pyspark-sagemaker-sg-ids"
+      Name: "/pyspark/sagemaker-sg-ids"
       Type: String
       Value: !Join
         - ','
@@ -519,7 +519,7 @@ Resources:
   SageMakerPrivateSubnetIdsSSM:
     Type: 'AWS::SSM::Parameter'
     Properties:
-      Name: !Sub "pyspark-private-subnet-ids"
+      Name: "/pyspark/private-subnet-ids"
       Type: String
       Value: !Join
         - ','
@@ -978,7 +978,7 @@ Resources:
   VPCEndpointS3IdSSM:
     Type: 'AWS::SSM::Parameter'
     Properties:
-      Name: !Sub "pyspark-s3-vpce-id"
+      Name: "/pyspark/s3-vpce-id"
       Type: String
       Value: !Ref VPCEndpointS3
       Description: S3 VPC Endpoint ID
@@ -986,7 +986,7 @@ Resources:
   VPCEndpointKMSIdSSM:
     Type: 'AWS::SSM::Parameter'
     Properties:
-      Name: !Sub "pyspark-kms-vpce-id"
+      Name: "/pyspark/kms-vpce-id"
       Type: String
       Value: !Ref VPCEndpointKMS
       Description: KMS VPC Endpoint ID
