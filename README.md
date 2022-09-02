@@ -103,7 +103,7 @@ The instructions below are on how to update the parameters considering the basic
 The deployed CloudFormation stack also creates SSM parameters with the data that you need to update the parameter file.
 To retrieve those, type the following command on your terminal window:
 ```
-aws ssm get-parameters --names /pyspark/sagemaker-pipeline-execution-role-arn /pyspark/private-subnet-ids /pyspark/sagemaker-sg-ids /pyspark/kms-s3-key-arn /pyspark/infra-bucket /pyspark/data-bucket
+aws ssm get-parameters --names /pyspark/sagemaker-pipeline-execution-role-arn /pyspark/private-subnet-ids /pyspark/sagemaker-sg-ids /pyspark/kms-s3-key-arn /pyspark/infra-bucket /pyspark/data-bucket --query "Parameters[*].{Name:Name,Value:Value}"
 ```
 
 Use the result of this query to update your `ml_pipeline/params/pipeline_params.json` file
