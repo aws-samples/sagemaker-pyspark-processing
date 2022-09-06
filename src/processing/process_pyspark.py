@@ -10,11 +10,6 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 
-Author:  Maira Ladeira Tanke (mttanke@amazon.com)
-Author:  Maren Suilmann (suilm@amazon.com)
-Author:  Donald Fossouo (fossod@amazon.com)
-Author:  Pauline Ting (tingpaul@amazon.com)
-
 Description: Example of pre-processing code using a PySpark processor
              This file presents code examples for:
               * read parameters from the processing job

@@ -10,9 +10,6 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 
-
-Author:  Maira Ladeira Tanke (mttanke@amazon.com)
-
 Description: Example of data utils file for pyspark processor
              This file presents code examples for:
               * read parquet data from s3

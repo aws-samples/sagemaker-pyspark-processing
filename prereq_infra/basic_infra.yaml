@@ -1,0 +1,1017 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  Create the base infrastructure for SageMaker secure deployment: 
+  * IAM roles 
+  * S3 buckets
+  * KMS Keys
+  * shared VPC network resources
+  * SageMaker Studio Domain
+
+Parameters:
+  InfraBucketPrefix:
+    Type: String
+    Description: Prefix for infrastructure bucket
+    Default: 'pyspark-infra-bucket'
+
+  DataBucketPrefix:
+    Type: String
+    Description: Prefix for infrastructure bucket
+    Default: 'pyspark-data-bucket'
+
+  AvailabilityZones:
+    Description: 'List of Availability Zones to use for the subnets in the VPC. Note: The logical order is preserved.'
+    Type: List<AWS::EC2::AvailabilityZone::Name>
+    Default: 'us-east-1a,us-east-1b'
+
+  PrivateSubnet1ACIDR:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Default: 10.0.0.0/19
+    Description: CIDR block for private subnet 1A located in Availability Zone 1
+    Type: String
+
+  PrivateSubnet2ACIDR:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Default: 10.0.32.0/19
+    Description: CIDR block for private subnet 2A located in Availability Zone 2
+    Type: String
+
+  PublicSubnet1CIDR:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Default: 10.0.128.0/20
+    Description: CIDR block for the public DMZ subnet 1 located in Availability Zone 1
+    Type: String
+
+  PublicSubnet2CIDR:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Default: 10.0.144.0/20
+    Description: CIDR block for the public DMZ subnet 2 located in Availability Zone 2
+    Type: String
+
+  VPCCIDR:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Default: 10.0.0.0/16
+    Description: CIDR block for the new VPC
+    Type: String
+
+Resources:
+  SageMakerExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - sagemaker.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - !Ref SageMakerExecutionPolicy
+        - 'arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess'
+        - 'arn:aws:iam::aws:policy/AmazonSageMakerFullAccess'
+        - 'arn:aws:iam::aws:policy/AmazonSageMakerFeatureStoreAccess'
+
+  SageMakerExecutionPolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Action:
+              - 'ssm:*'
+            Resource: '*'
+            Effect: Allow
+          -
+            Action:
+              - 'sagemaker:CreateNotebookInstance'
+              - 'sagemaker:CreateHyperParameterTuningJob'
+              - 'sagemaker:CreateProcessingJob'
+              - 'sagemaker:CreateTrainingJob'
+              - 'sagemaker:CreateCompilationJob'
+              - 'sagemaker:CreateModel'
+            Resource:
+              - !Sub 'arn:aws:sagemaker:*:${AWS::AccountId}:*'
+            Effect: Deny
+            Condition:
+              'Null':
+                'sagemaker:VpcSubnets': 'true'
+                'sagemaker:VpcSecurityGroupIds': 'true'
+          -
+            Action:
+              - sagemaker:ListTags
+            Resource:
+              - !Sub 'arn:aws:sagemaker:*:${AWS::AccountId}:*'
+            Effect: Allow
+          -
+            Action:
+              - 'codecommit:BatchGetRepositories'
+              - 'codecommit:GitPull'
+              - 'codecommit:GitPush'
+              - 'codecommit:CreateBranch'
+              - 'codecommit:DeleteBranch'
+              - 'codecommit:GetBranch'
+              - 'codecommit:CreatePullRequest'
+              - 'codecommit:GetPullRequest'
+              - 'codecommit:CreateCommit'
+              - 'codecommit:GetCommit'
+              - 'codecommit:GetCommitHistory'
+              - 'codecommit:GetDifferences'
+              - 'codecommit:GetReferences'
+              - 'codecommit:CreateRepository'
+              - 'codecommit:GetRepository'
+            Resource:
+              - !Sub 'arn:aws:codecommit:*:${AWS::AccountId}:*'
+            Effect: Allow
+          -
+            Effect: Allow
+            Action:
+              - 'codecommit:List*'
+            Resource:
+              - '*'
+          -
+            Action:
+              - 'kms:CreateGrant'
+              - 'kms:Decrypt'
+              - 'kms:DescribeKey'
+              - 'kms:Encrypt'
+              - 'kms:GenerateDataKey'
+              - 'kms:ListAliases'
+            Resource:
+              - !Sub 'arn:aws:kms:*:${AWS::AccountId}:*'
+            Effect: Allow
+          -
+            Action:
+              -  s3:DescribeJob
+            Resource:
+              - '*'
+            Effect: Allow
+          -
+            Action:
+              - 's3:DeleteObject'
+              - 's3:DeleteBucket'
+            Resource:
+              - '*'
+            Effect: Allow
+          -
+            Action:
+              - 's3:GetObject'
+              - 's3:PutObject'
+              - 's3:DeleteObject'
+              - 's3:GetBucketAcl'
+              - 's3:GetBucketCors'
+              - 's3:ListBucketMultipartUploads'
+              - 's3:PutBucketCors'
+              - 's3:GetObjectVersion'
+              - 's3:AbortMultipartUpload'
+            Resource:
+              - '*'
+            Effect: Allow
+          -
+            Action:
+              - 'cloudformation:DeleteStackInstances'
+              - 'cloudformation:DeleteStackSet'
+            Resource:
+              - 'arn:aws:cloudformation:*:*:stackset/sagemaker-*'
+            Effect: Allow
+          -
+            Action:
+              - 'cloudformation:List*'
+              - 'cloudformation:Describe*'
+            Resource:
+              - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:*'
+            Effect: Allow
+          -
+            Action:
+              - 'codepipeline:GetPipelineState'
+            Resource:
+              - 'arn:aws:codepipeline:*:*:sagemaker-*'
+            Effect: Allow
+          -
+            Action:
+              - 's3:GetBucketLocation'
+              - 's3:ListBucket'
+              - 's3:ListAllMyBuckets'
+            Resource:
+              - 'arn:aws:s3:::*'
+            Effect: Allow
+          -
+            Action:
+              - glue:CreateTable
+              - glue:GetPartition
+              - glue:BatchCreatePartition
+            Resource:
+              - !Sub 'arn:aws:glue:${AWS::Region}:${AWS::AccountId}:*'
+            Effect: Allow
+
+  SMExecutionRoleSSM:
+    Type: 'AWS::SSM::Parameter'
+    Properties:
+      Name: "/pyspark/sagemaker-execution-role-arn"
+      Type: String
+      Value: !GetAtt SageMakerExecutionRole.Arn
+      Description: SageMaker Execution Role Arn
+
+  SageMakerPipelineExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - sagemaker.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - !Ref SageMakerPipelineExecutionPolicy
+        - 'arn:aws:iam::aws:policy/AmazonSageMakerFullAccess'
+
+  PipelineExecutionRoleSSM:
+    Type: 'AWS::SSM::Parameter'
+    Properties:
+      Name: "/pyspark/sagemaker-pipeline-execution-role-arn"
+      Type: String
+      Value: !GetAtt SageMakerPipelineExecutionRole.Arn
+      Description: SageMaker Pipeline Execution Role Arn
+
+  SageMakerPipelineExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Policy for SageMaker pipeline execution role
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - iam:PassRole
+            Resource:
+              - !GetAtt SageMakerExecutionRole.Arn
+            Effect: Allow
+          - Action:
+              - sagemaker:Create*
+              - sagemaker:Describe*
+              - sagemaker:Start*
+              - sagemaker:StopPipelineExecution
+              - sagemaker:UpdatePipeline
+              - sagemaker:UpdatePipelineExecution
+            Resource:
+              - !Sub 'arn:aws:sagemaker:*:${AWS::AccountId}:*'
+            Effect: Allow
+          - Action:
+              - 'sagemaker:List*'
+            Resource:
+              - '*'
+            Effect: Allow
+          - Action:
+              - s3:*
+            Resource:
+              - '*'
+            Effect: Allow
+          - Action:
+              - kms:*
+            Resource:
+              - '*'
+            Effect: Allow
+          - Action:
+              - ecr:SetRepositoryPolicy
+              - ecr:CompleteLayerUpload
+              - ecr:BatchDeleteImage
+              - ecr:UploadLayerPart
+              - ecr:DeleteRepositoryPolicy
+              - ecr:InitiateLayerUpload
+              - ecr:DeleteRepository
+              - ecr:PutImage
+            Resource: 'arn:aws:ecr:*:*:repository/*sagemaker*'
+            Effect: Allow
+          - Action:
+              - ecr:BatchCheckLayerAvailability
+              - ecr:BatchGetImage
+              - ecr:CreateRepository
+              - ecr:Describe*
+              - ecr:GetAuthorizationToken
+              - ecr:GetDownloadUrlForLayer
+              - ecr:StartImageScan
+            Resource:
+              - 'arn:aws:ecr:*'
+            Effect: Allow
+
+  VPCFlowLogsRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      Description: Rights to Publish VPC Flow Logs to CloudWatch Logs
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service:
+                - vpc-flow-logs.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: CloudWatchLogGroup
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Sid: CloudWatchLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/vpcflowlogs/*'
+
+
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${DataBucketPrefix}-${AWS::AccountId}-${AWS::Region}'
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: TRUE
+        BlockPublicPolicy: TRUE
+        IgnorePublicAcls: TRUE
+        RestrictPublicBuckets: TRUE
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'aws:kms'
+              KMSMasterKeyID: !Ref S3BucketKMSKey
+
+  DataBucketSSM:
+    Type: 'AWS::SSM::Parameter'
+    Properties:
+      Name: "/pyspark/data-bucket"
+      Type: String
+      Value: !Ref DataBucket
+      Description: Data S3 bucket name
+
+  InfraBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${InfraBucketPrefix}-${AWS::AccountId}-${AWS::Region}'
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: TRUE
+        BlockPublicPolicy: TRUE
+        IgnorePublicAcls: TRUE
+        RestrictPublicBuckets: TRUE
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'aws:kms'
+              KMSMasterKeyID: !Ref S3BucketKMSKey
+
+  InfraBucketSSM:
+    Type: 'AWS::SSM::Parameter'
+    Properties:
+      Name: "/pyspark/infra-bucket"
+      Type: String
+      Value: !Ref InfraBucket
+      Description: Infra S3 bucket name
+
+  S3BucketKMSKey:
+    Type: 'AWS::KMS::Key'
+    Properties:
+      EnableKeyRotation: true
+      Description: KMS key for S3 buckets for the Data Science environment
+      KeyPolicy:
+        Id: key-policy-1
+        Version: 2012-10-17
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: AllowCrossAccount
+            Effect: Allow
+            Principal:
+              AWS:
+                - !GetAtt SageMakerExecutionRole.Arn
+                - !GetAtt SageMakerPipelineExecutionRole.Arn
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: '*'
+
+  S3BucketKMSKeyAlias:
+    Type: 'AWS::KMS::Alias'
+    Properties:
+      AliasName: "alias/kms-s3"
+      TargetKeyId: !Ref S3BucketKMSKey
+
+  S3BucketKMSKeyArnSSM:
+    Type: 'AWS::SSM::Parameter'
+    Properties:
+      Name: "/pyspark/kms-s3-key-arn"
+      Type: String
+      Value: !GetAtt S3BucketKMSKey.Arn
+      Description: Environment S3 buckets KMS key
+
+  DHCPOptions:
+    Type: AWS::EC2::DHCPOptions
+    Properties:
+      DomainName: !Sub '${AWS::Region}.compute.internal'
+      DomainNameServers:
+        - AmazonProvidedDNS
+
+  # VPC
+  # Set DeletionPolicy to 'Retain'
+  # SageMaker Studio creates an EFS file system with mounting points in VPC and does not delete that file system on deletion of SageMaker Studio
+  # This EFS cause the CloudFormation deletion process for VPC template to fail
+  VPC:
+    Type: AWS::EC2::VPC
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Delete
+    Properties:
+      CidrBlock: !Ref 'VPCCIDR'
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+
+  VPCDHCPOptionsAssociation:
+    Type: AWS::EC2::VPCDHCPOptionsAssociation
+    Properties:
+      VpcId: !Ref 'VPC'
+      DhcpOptionsId: !Ref DHCPOptions
+
+  # Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref 'VPC'
+      InternetGatewayId: !Ref 'InternetGateway'
+
+  # Private subnets
+  PrivateSubnet1A:
+    Type: AWS::EC2::Subnet
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Delete
+    Properties:
+      VpcId: !Ref 'VPC'
+      CidrBlock: !Ref 'PrivateSubnet1ACIDR'
+      AvailabilityZone: !Select ['0', !Ref 'AvailabilityZones']
+
+  PrivateSubnet2A:
+    Type: AWS::EC2::Subnet
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Delete
+    Properties:
+      VpcId: !Ref 'VPC'
+      CidrBlock: !Ref 'PrivateSubnet2ACIDR'
+      AvailabilityZone: !Select ['1', !Ref 'AvailabilityZones']
+
+  # SSM parameters
+  VPCIdSSM:
+    Type: 'AWS::SSM::Parameter'
+    Properties:
+      Name: "/pyspark/vpc-id"
+      Type: String
+      Value: !Ref 'VPC'
+      Description: !Sub "Pyspark VPC ID"
+
+  PrivateSubnet1AIdSSM:
+    Type: 'AWS::SSM::Parameter'
+    Properties:
+      Name: "/pyspark/private-sn-1a-id"
+      Type: String
+      Value: !Ref PrivateSubnet1A
+      Description: Private Subnet 1A ID
+
+  PrivateSubnet2AIdSSM:
+    Type: 'AWS::SSM::Parameter'
+    Properties:
+      Name: "/pyspark/private-sn-2a-id"
+      Type: String
+      Value: !Ref PrivateSubnet2A
+      Description: Private Subnet 2A ID
+
+  SageMakerSecurityGroupIdsSSM:
+    Type: 'AWS::SSM::Parameter'
+    Properties:
+      Name: "/pyspark/sagemaker-sg-ids"
+      Type: String
+      Value: !Join
+        - ','
+        - - !GetAtt SageMakerSecurityGroup.GroupId
+      Description: SageMaker Security Group id
+
+  SageMakerPrivateSubnetIdsSSM:
+    Type: 'AWS::SSM::Parameter'
+    Properties:
+      Name: "/pyspark/private-subnet-ids"
+      Type: String
+      Value: !Join
+        - ','
+        - - !Ref PrivateSubnet1A
+          - !Ref PrivateSubnet2A
+      Description: SageMaker private subnet ids
+
+  # Public subnets
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref 'VPC'
+      CidrBlock: !Ref 'PublicSubnet1CIDR'
+      AvailabilityZone: !Select ['0', !Ref 'AvailabilityZones']
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref 'VPC'
+      CidrBlock: !Ref 'PublicSubnet2CIDR'
+      AvailabilityZone: !Select ['1', !Ref 'AvailabilityZones']
+
+  # Private subnet route tables
+  PrivateSubnet1ARouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref 'VPC'
+
+  PrivateSubnet1ARoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref 'PrivateSubnet1ARouteTable'
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref 'NATGateway1'
+
+  PrivateSubnet1ARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref 'PrivateSubnet1A'
+      RouteTableId: !Ref 'PrivateSubnet1ARouteTable'
+
+  PrivateSubnet2ARouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref 'VPC'
+
+  PrivateSubnet2ARoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref 'PrivateSubnet2ARouteTable'
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref 'NATGateway2'
+
+  PrivateSubnet2ARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref 'PrivateSubnet2A'
+      RouteTableId: !Ref 'PrivateSubnet2ARouteTable'
+
+  # Public subnet route tables
+  PublicSubnetRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref 'VPC'
+
+  PublicSubnetRoute:
+    DependsOn: VPCGatewayAttachment
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref 'PublicSubnetRouteTable'
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref 'InternetGateway'
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref 'PublicSubnet1'
+      RouteTableId: !Ref 'PublicSubnetRouteTable'
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref 'PublicSubnet2'
+      RouteTableId: !Ref 'PublicSubnetRouteTable'
+
+  # Elastic IP for NAT attachments
+  NAT1EIP:
+    DependsOn: VPCGatewayAttachment
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NAT2EIP:
+    DependsOn: VPCGatewayAttachment
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  # NAT Gateways
+  NATGateway1:
+    DependsOn: VPCGatewayAttachment
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt 'NAT1EIP.AllocationId'
+      SubnetId: !Ref 'PublicSubnet1'
+
+  NATGateway2:
+    DependsOn: VPCGatewayAttachment
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt 'NAT2EIP.AllocationId'
+      SubnetId: !Ref 'PublicSubnet2'
+          
+  VPCFlowLogsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/vpcflowlogs/pyspark-vpc-flow-logs'
+      RetentionInDays: 14
+
+  VPCFlowLogsToCloudWatch:
+    Type: AWS::EC2::FlowLog
+    Properties:
+      LogDestinationType: cloud-watch-logs
+      LogGroupName: !Ref VPCFlowLogsLogGroup
+      DeliverLogsPermissionArn: !GetAtt VPCFlowLogsRole.Arn
+      LogFormat: '${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status}'
+      MaxAggregationInterval: 600
+      ResourceId: !Ref 'VPC'
+      ResourceType: VPC
+      TrafficType: REJECT
+
+  # Security groups
+  VPCEndpointsSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Allow HTTPS/TLS for VPC Endpoints
+      VpcId: !Ref 'VPC'
+      SecurityGroupIngress:
+        - Description: Ingress TCP 443 from SageMaker security group
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !GetAtt SageMakerSecurityGroup.GroupId
+      SecurityGroupEgress:
+        - Description: All traffic is allowed outbound
+          IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+
+  # Single rule allowing traffic from the VPC CIDR block
+  VPCEndpointsSecurityGroupVPCIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      CidrIp: !Ref 'VPCCIDR'
+      Description: Allow all traffic from own VPC
+      IpProtocol: '-1'
+      GroupId: !Ref VPCEndpointsSecurityGroup
+
+  # Set CIDR-based ingress rules allowing traffic from all the private subnets into the VPCE SG
+  VPCEndpointsSecurityGroupTLSIngress1:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      CidrIp: !Ref PrivateSubnet1ACIDR
+      Description: Allow on port 443 from Private Subnet 1A
+      FromPort: 443
+      IpProtocol: tcp
+      ToPort: 443
+      GroupId: !Ref VPCEndpointsSecurityGroup
+
+  VPCEndpointsSecurityGroupNFSIngress1:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      CidrIp: !Ref PrivateSubnet1ACIDR
+      Description: Allow on port 2049 from Private Subnet 1A
+      FromPort: 2049
+      IpProtocol: tcp
+      ToPort: 2049
+      GroupId: !Ref VPCEndpointsSecurityGroup
+
+  VPCEndpointsSecurityGroupTLSIngress2:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      CidrIp: !Ref PrivateSubnet2ACIDR
+      Description: Allow on port 443 from Private Subnet 2A
+      FromPort: 443
+      IpProtocol: tcp
+      ToPort: 443
+      GroupId: !Ref VPCEndpointsSecurityGroup
+
+  VPCEndpointsSecurityGroupNFSIngress2:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      CidrIp: !Ref PrivateSubnet2ACIDR
+      Description: Allow on port 2049 from Private Subnet 2A
+      FromPort: 2049
+      IpProtocol: tcp
+      ToPort: 2049
+      GroupId: !Ref VPCEndpointsSecurityGroup
+
+  SageMakerSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      SecurityGroupEgress:
+        - Description: All traffic is allowed outbound
+          IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+      GroupDescription: 'Security Group for SageMaker Studio and all SageMaker workloads'
+      VpcId: !Ref 'VPC'
+
+  # Self-referencing the security group to enable communication between instances within the same SG
+  SageMakerSecurityGroupSelfIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Self-ingress to enable communication between instances within the same SG
+      IpProtocol: '-1'
+      SourceSecurityGroupId: !Ref SageMakerSecurityGroup
+      GroupId: !Ref SageMakerSecurityGroup
+
+  SharedServicesVPCEndpointSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Allow HTTP ingress for shared services VPC Endpoint
+      VpcId: !Ref 'VPC'
+      SecurityGroupIngress:
+        - Description: Ingress TCP 80 from SageMaker security group
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !GetAtt SageMakerSecurityGroup.GroupId
+      SecurityGroupEgress:
+        - Description: All traffic is allowed outbound
+          IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+
+  # ******************************************************************************
+  # VPC endpoints
+  # ******************************************************************************
+
+  # Create the VPC endpoints (interface type) for AWS public service access:
+  # SSM, CloudWatch, CloudWatch Logs, SageMaker Runtime, SageMaker API, SageMaker Notebook
+  # STS, CodeCommit, CodeCommit API, ECR API, ECR, KMS
+  # Shared Services PyPi mirror VPC endpoint
+  VPCEndpointSSM:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1A
+        - !Ref PrivateSubnet2A
+      SecurityGroupIds:
+        - !GetAtt VPCEndpointsSecurityGroup.GroupId
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ssm'
+      VpcId: !Ref 'VPC'
+
+  VPCEndpointCW:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1A
+        - !Ref PrivateSubnet2A
+      SecurityGroupIds:
+        - !GetAtt VPCEndpointsSecurityGroup.GroupId
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.monitoring'
+      VpcId: !Ref 'VPC'
+
+  VPCEndpointCWL:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1A
+        - !Ref PrivateSubnet2A
+      SecurityGroupIds:
+        - !GetAtt VPCEndpointsSecurityGroup.GroupId
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.logs'
+      VpcId: !Ref 'VPC'
+
+  VPCEndpointSagemakerAPI:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1A
+        - !Ref PrivateSubnet2A
+      SecurityGroupIds:
+        - !GetAtt VPCEndpointsSecurityGroup.GroupId
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.sagemaker.api'
+      VpcId: !Ref 'VPC'
+
+  VPCEndpointSageMakerRuntime:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1A
+        - !Ref PrivateSubnet2A
+      SecurityGroupIds:
+        - !GetAtt VPCEndpointsSecurityGroup.GroupId
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.sagemaker.runtime'
+      VpcId: !Ref 'VPC'
+
+  VPCEndpointSageMakerNotebook:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1A
+        - !Ref PrivateSubnet2A
+      SecurityGroupIds:
+        - !GetAtt VPCEndpointsSecurityGroup.GroupId
+      ServiceName: !Sub 'aws.sagemaker.${AWS::Region}.notebook'
+      VpcId: !Ref 'VPC'
+
+  VPCEndpointSTS:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1A
+        - !Ref PrivateSubnet2A
+      SecurityGroupIds:
+        - !GetAtt VPCEndpointsSecurityGroup.GroupId
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.sts'
+      VpcId: !Ref 'VPC'
+
+  VPCEndpointCodeCommit:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1A
+        - !Ref PrivateSubnet2A
+      SecurityGroupIds:
+        - !GetAtt VPCEndpointsSecurityGroup.GroupId
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.git-codecommit'
+      VpcId: !Ref 'VPC'
+
+  VPCEndpointCodeCommitAPI:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1A
+        - !Ref PrivateSubnet2A
+      SecurityGroupIds:
+        - !GetAtt VPCEndpointsSecurityGroup.GroupId
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.codecommit'
+      VpcId: !Ref 'VPC'
+
+  VPCEndpointCodePipeline:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1A
+        - !Ref PrivateSubnet2A
+      SecurityGroupIds:
+        - !GetAtt VPCEndpointsSecurityGroup.GroupId
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.codepipeline'
+      VpcId: !Ref 'VPC'
+
+  VPCEndpointCodeBuild:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1A
+        - !Ref PrivateSubnet2A
+      SecurityGroupIds:
+        - !GetAtt VPCEndpointsSecurityGroup.GroupId
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.codebuild'
+      VpcId: !Ref 'VPC'
+
+  VPCEndpointECRAPI:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1A
+        - !Ref PrivateSubnet2A
+      SecurityGroupIds:
+        - !GetAtt VPCEndpointsSecurityGroup.GroupId
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecr.api'
+      VpcId: !Ref 'VPC'
+
+  VPCEndpointECR:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1A
+        - !Ref PrivateSubnet2A
+      SecurityGroupIds:
+        - !GetAtt VPCEndpointsSecurityGroup.GroupId
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecr.dkr'
+      VpcId: !Ref 'VPC'
+
+  VPCEndpointServiceCatalog:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1A
+        - !Ref PrivateSubnet2A
+      SecurityGroupIds:
+        - !GetAtt VPCEndpointsSecurityGroup.GroupId
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.servicecatalog'
+      VpcId: !Ref 'VPC'
+
+  # Create S3 endpoint (gateway type) for S3 access
+  VPCEndpointS3:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      VpcEndpointType: Gateway
+      VpcId: !Ref 'VPC'
+      RouteTableIds:
+        - !Ref PrivateSubnet1ARouteTable
+        - !Ref PrivateSubnet2ARouteTable
+
+  VPCEndpointKMS:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action: '*'
+            Resource: '*'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1A
+        - !Ref PrivateSubnet2A
+      SecurityGroupIds:
+        - !GetAtt VPCEndpointsSecurityGroup.GroupId
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.kms'
+      VpcId: !Ref 'VPC'
+
+  # SSM parameters
+  VPCEndpointS3IdSSM:
+    Type: 'AWS::SSM::Parameter'
+    Properties:
+      Name: "/pyspark/s3-vpce-id"
+      Type: String
+      Value: !Ref VPCEndpointS3
+      Description: S3 VPC Endpoint ID
+
+  VPCEndpointKMSIdSSM:
+    Type: 'AWS::SSM::Parameter'
+    Properties:
+      Name: "/pyspark/kms-vpce-id"
+      Type: String
+      Value: !Ref VPCEndpointKMS
+      Description: KMS VPC Endpoint ID
+
+  SageMakerStudioDomain:
+    Type: AWS::SageMaker::Domain
+    Properties:
+      AppNetworkAccessType: 'VpcOnly'
+      AuthMode: 'IAM'
+      DefaultUserSettings:
+        ExecutionRole: !GetAtt SageMakerExecutionRole.Arn
+        SecurityGroups:
+        - !GetAtt SageMakerSecurityGroup.GroupId
+      DomainName: !Sub 'pyspark-sagemaker-domain'
+      SubnetIds:
+         - !Ref PrivateSubnet1A
+         - !Ref PrivateSubnet2A
+      VpcId: !Ref 'VPC'
+
+  SageMakerUserProfile:
+    Type: AWS::SageMaker::UserProfile
+    Properties:
+      DomainId: !GetAtt SageMakerStudioDomain.DomainId
+      UserProfileName: !Sub '${AWS::Region}-pyspark-user-profile'
+      UserSettings:
+        ExecutionRole: !GetAtt SageMakerExecutionRole.Arn
+        SecurityGroups:
+          - !GetAtt SageMakerSecurityGroup.GroupId

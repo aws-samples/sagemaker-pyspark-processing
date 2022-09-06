@@ -9,11 +9,6 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 
-Author:  Maira Ladeira Tanke (mttanke@amazon.com)
-Author:  Maren Suilmann (suilm@amazon.com)
-Author:  Donald Fossouo (fossod@amazon.com)
-Author:  Pauline Ting (tingpaul@amazon.com)
-
 Description: Support functions for SageMaker Training pipeline
 """
 from datetime import datetime

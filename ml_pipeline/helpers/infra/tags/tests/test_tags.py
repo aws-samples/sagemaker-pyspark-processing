@@ -9,11 +9,6 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 
-Author:  Maira Ladeira Tanke (mttanke@amazon.com)
-Author:  Maren Suilmann (suilm@amazon.com)
-Author:  Donald Fossouo (fossod@amazon.com)
-Author:  Pauline Ting (tingpaul@amazon.com)
-
 Description: Tests for ml_pipeline.helpers.infra.tags.tags.py
 """
 from ml_pipeline.helpers.infra.tags.tags import get_tags_input
