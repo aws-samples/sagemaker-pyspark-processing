@@ -16,10 +16,9 @@ from sagemaker.spark.processing import PySparkProcessor
 from sagemaker.processing import ScriptProcessor
 
 
-def create_pyspark_processor(base_job_name, framework_version, job_code_uri, role, processing_instance_type,
-                             processing_instance_count=1, job_helpers_uris=None, job_args=None,
-                             sagemaker_session=None, network_config_input=None, tags_input=None, volume_kms_key=None,
-                             output_kms_key=None, spark_event_logs_s3_uri=None):
+def create_pyspark_processor(base_job_name, framework_version, role, processing_instance_type,
+                             processing_instance_count=1, sagemaker_session=None, network_config_input=None, 
+                             tags_input=None, volume_kms_key=None, output_kms_key=None):
     """
     function that creates a pyspark processing job and its running dependencies
     Args:
@@ -60,22 +59,11 @@ def create_pyspark_processor(base_job_name, framework_version, job_code_uri, rol
         tags=tags_input,
         sagemaker_session=sagemaker_session
     )
-    # setting up dependencies
-    print("job_code_uri:", job_code_uri)
-    print("job_helpers_uris:", job_helpers_uris)
-    print("job_args:", job_args)
-    print("spark_event_logs_s3_uri:", spark_event_logs_s3_uri)
-    run_ags_dependencies = spark_processor.get_run_args(
-        submit_app=job_code_uri,
-        submit_py_files=job_helpers_uris,
-        arguments=job_args,
-        spark_event_logs_s3_uri=spark_event_logs_s3_uri
-    )
-    return spark_processor, run_ags_dependencies
+    return spark_processor
 
 
-def create_script_processor(base_job_name, job_code_uri, image_uri, role, command, processing_instance_type,
-                            processing_instance_count=1, job_args=None, sagemaker_session=None,
+def create_script_processor(base_job_name, image_uri, role, command, processing_instance_type,
+                            processing_instance_count=1, sagemaker_session=None,
                             network_config_input=None, tags_input=None, volume_kms_key=None, output_kms_key=None):
     """
     function that creates a script processing job and its running dependencies
@@ -116,8 +104,4 @@ def create_script_processor(base_job_name, job_code_uri, image_uri, role, comman
         sagemaker_session=sagemaker_session,
         command=command
     )
-    run_ags_dependencies = script_processor.get_run_args(
-         code=job_code_uri,
-         arguments=job_args,
-    )
-    return script_processor, run_ags_dependencies
+    return script_processor

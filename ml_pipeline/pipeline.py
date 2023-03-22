@@ -25,12 +25,12 @@ from sagemaker.workflow.pipeline_experiment_config import PipelineExperimentConf
 from sagemaker.workflow.steps import CacheConfig
 from sagemaker.processing import ProcessingInput
 from sagemaker.workflow.steps import ProcessingStep
+from sagemaker.workflow.pipeline_context import PipelineSession
+from sagemaker.spark.processing import PySparkProcessor
 
-from helpers.pipeline.steps.processing.processing_job import create_pyspark_processor
 from helpers.infra.networking.networking import get_network_configuration
 from helpers.infra.tags.tags import get_tags_input
 from helpers.pipeline_utils import get_pipeline_config
-
 
 def create_pipeline(pipeline_params, logger):
     """
@@ -41,7 +41,7 @@ def create_pipeline(pipeline_params, logger):
         ()
     """
     # Create SageMaker Session
-    sagemaker_session = sagemaker.Session()
+    sagemaker_session = PipelineSession()
 
     # Get Tags
     tags_input = get_tags_input(pipeline_params["tags"])
@@ -56,56 +56,55 @@ def create_pipeline(pipeline_params, logger):
     pipeline_config = get_pipeline_config(pipeline_params)
 
     # setting processing cache obj
-    logger.info("Setting " + pipeline_params["pyspark_process_name"] + " cache configuration 3to 30 days")
+    logger.info("Setting " + pipeline_params["pyspark_process_name"] + " cache configuration 3 to 30 days")
     cache_config = CacheConfig(enable_caching=True, expire_after="p30d")
-
-    # processing input arguments. To add new arguments to this list you need to provide two entrances:
-    # 1st is the argument name preceded by "--" and the 2nd is the argument value
-    # setting up processing arguments
-    process_args = [
-        "--input_table", pipeline_params["pyspark_process_data_input"],
-        "--output_table", pipeline_params["pyspark_process_data_output"]
-    ]
-    
 
     # Create PySpark Processing Step
     logger.info("Creating " + pipeline_params["pyspark_process_name"] + " processor")
 
-    processing_pyspark_processor, processing_run_dependencies = create_pyspark_processor(
+    # setting up spark processor
+    processing_pyspark_processor = PySparkProcessor(
         base_job_name=pipeline_params["pyspark_process_name"],
         framework_version=pipeline_params["pyspark_framework_version"],
-        job_code_uri=pipeline_params["pyspark_process_code"],
-        job_helpers_uris=[pipeline_params["pyspark_helper_code"]],
-        job_args=process_args,
-        sagemaker_session=sagemaker_session,
-        network_config_input=network_config,
-        tags_input=tags_input,
-        processing_instance_type=pipeline_params["pyspark_process_instance_type"],
-        processing_instance_count=pipeline_params["pyspark_process_instance_count"],
         role=pipeline_params["pipeline_role"],
-        spark_event_logs_s3_uri=pipeline_params["process_spark_ui_log_output"].format(pipeline_params["trial"]),
+        instance_count=pipeline_params["pyspark_process_instance_count"],
+        instance_type=pipeline_params["pyspark_process_instance_type"],
         volume_kms_key=pipeline_params["pyspark_process_volume_kms"],
-        output_kms_key=pipeline_params["pyspark_process_output_kms"]
+        output_kms_key=pipeline_params["pyspark_process_output_kms"],
+        network_config=network_config,
+        tags=tags_input,
+        sagemaker_session=sagemaker_session
     )
-    inputs = [
-        ProcessingInput(
-            source=pipeline_params["spark_config_file"],
-            destination="/opt/ml/processing/input/conf",
-            s3_data_type="S3Prefix",
-            s3_input_mode="File",
-            s3_data_distribution_type="FullyReplicated",
-            s3_compression_type="None"
-        )
-    ]
+    
+    # setting up arguments
+    run_ags = processing_pyspark_processor.run(
+        submit_app=pipeline_params["pyspark_process_code"],
+        submit_py_files=[pipeline_params["pyspark_helper_code"]],
+        arguments=[
+        # processing input arguments. To add new arguments to this list you need to provide two entrances:
+        # 1st is the argument name preceded by "--" and the 2nd is the argument value
+        # setting up processing arguments
+            "--input_table", pipeline_params["pyspark_process_data_input"],
+            "--output_table", pipeline_params["pyspark_process_data_output"]
+        ],
+        spark_event_logs_s3_uri=pipeline_params["process_spark_ui_log_output"].format(pipeline_params["trial"]),
+        inputs = [
+            ProcessingInput(
+                source=pipeline_params["spark_config_file"],
+                destination="/opt/ml/processing/input/conf",
+                s3_data_type="S3Prefix",
+                s3_input_mode="File",
+                s3_data_distribution_type="FullyReplicated",
+                s3_compression_type="None"
+            )
+        ],
+    )
+
     # create step
     pyspark_processing_step = ProcessingStep(
         name=pipeline_params["pyspark_process_name"],
-        processor=processing_pyspark_processor,
-        job_arguments=processing_run_dependencies.arguments,
-        code=processing_run_dependencies.code,
+        step_args=run_ags,
         cache_config=cache_config,
-        inputs=inputs,
-        outputs=processing_run_dependencies.outputs
     )
 
     # Create Pipeline
