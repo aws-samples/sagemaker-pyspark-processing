@@ -16,7 +16,7 @@ pyyaml==6.0
 sagemaker-experiments==0.1.35
 sagemaker==2.99.0
 scikit-learn==1.0.2
-scipy==1.7.3
+scipy==1.10.0
 seaborn==0.11.2
 setuptools-scm==7.0.5
 six==1.16.0
